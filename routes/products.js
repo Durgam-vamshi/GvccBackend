@@ -1,15 +1,17 @@
-const express = require('express');
+
+
+const express = require("express");
 const router = express.Router();
-const pool = require('../config/db');
+const db = require("../config/db");
 
 let cache = null;
 let expires = 0;
 const CACHE_TTL = (process.env.PRODUCTS_CACHE_TTL_SEC || 30) * 1000;
 
-router.get('/', async (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const search = req.query.search || '';
-    const category = req.query.category || '';
+    const search = req.query.search || "";
+    const category = req.query.category || "";
     const page = parseInt(req.query.page || 1);
     const limit = parseInt(req.query.limit || 10);
     const offset = (page - 1) * limit;
@@ -20,41 +22,40 @@ router.get('/', async (req, res) => {
       return res.json(cache.data);
     }
 
-
-
+  
     let where = "WHERE 1=1";
-const params = [];
+    const params = [];
 
-if (search && search.trim() !== "") {
-  where += " AND (name LIKE ? OR short_desc LIKE ?)";
-  params.push(`%${search}%`, `%${search}%`);
-}
+    if (search.trim() !== "") {
+      where += " AND (name LIKE ? OR short_desc LIKE ?)";
+      params.push(`%${search}%`, `%${search}%`);
+    }
 
-if (category && category.trim() !== "") {
-  where += " AND category = ?";
-  params.push(category);
-}
-
-
-    const [[countRow]] = await pool.query(
-      `SELECT COUNT(*) as total FROM products ${where}`,
+    if (category.trim() !== "") {
+      where += " AND category = ?";
+      params.push(category);
+    }
+    const countRow = await db.getAsync(
+      `SELECT COUNT(*) AS total FROM products ${where}`,
       params
     );
 
     const total = countRow.total;
     const totalPages = Math.ceil(total / limit);
 
-    const [rows] = await pool.query(
-      `SELECT id, name, category, short_desc, price, image_url 
-       FROM products 
-       ${where} 
-       LIMIT ? OFFSET ?`,
+    const rows = await db.allAsync(
+      `
+      SELECT id, name, category, short_desc, price, image_url
+      FROM products
+      ${where}
+      LIMIT ? OFFSET ?
+      `,
       [...params, limit, offset]
     );
 
     const response = {
       meta: { total, page, limit, totalPages },
-      products: rows
+      products: rows,
     };
 
     cache = { key: cacheKey, data: response };
@@ -63,46 +64,39 @@ if (category && category.trim() !== "") {
     res.json(response);
 
   } catch (error) {
-    console.error(error);
+    console.error("Products list error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-
-
-router.get('/categories', async (req, res) => {
+router.get("/categories", async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      "SELECT DISTINCT category FROM products ORDER BY category"
+    const rows = await db.allAsync(
+      "SELECT DISTINCT category FROM products WHERE category IS NOT NULL ORDER BY category"
     );
 
-    res.json(rows.map(r => r.category));
+    res.json(rows.map((r) => r.category));
   } catch (error) {
-    console.error(error);
+    console.error("Category list error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-router.get('/:id', async (req, res) => {
+router.get("/:id", async (req, res) => {
   try {
-    const [rows] = await pool.query(
+    const row = await db.getAsync(
       "SELECT * FROM products WHERE id = ?",
       [req.params.id]
     );
 
-    if (!rows.length) return res.status(404).json({ error: "Product not found" });
+    if (!row) return res.status(404).json({ error: "Product not found" });
 
-    res.json(rows[0]);
+    res.json(row);
 
   } catch (error) {
-    console.log(error);
+    console.error("Product fetch error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
-
-
-
-
-
 
 module.exports = router;

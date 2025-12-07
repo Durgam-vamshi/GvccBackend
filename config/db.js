@@ -1,24 +1,36 @@
-const mysql = require('mysql2/promise');
-require('dotenv').config();
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10
+const sqlite3 = require("sqlite3").verbose();
+
+const db = new sqlite3.Database("./config.db", (err) => {
+  if (err) console.error("DB Connection Error:", err.message);
+  else console.log("SQLite database connected!");
 });
 
+db.run("PRAGMA foreign_keys = ON;");
 
-(async () => {
-  try {
-    const connection = await pool.getConnection();
-    console.log(" Database connected successfully!");
-    connection.release();
-  } catch (err) {
-    console.error(" Database connection failed:", err.message);
-  }
-})();
+db.runAsync = (sql, params = []) =>
+  new Promise((resolve, reject) => {
+    db.run(sql, params, function (err) {
+      if (err) reject(err);
+      else resolve({ id: this.lastID, changes: this.changes });
+    });
+  });
 
-module.exports = pool;
+db.getAsync = (sql, params = []) =>
+  new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
+
+db.allAsync = (sql, params = []) =>
+  new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+
+module.exports = db;
+
